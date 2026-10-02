@@ -98,6 +98,7 @@ final class ScheduleStore: ObservableObject {
         case .success(let found):
             sessions = found
             lastUpdated = updated
+            PhoneSync.export(found, courses: courses, updated: updated)
             if case .failed = status { status = .idle }
         case .failure(let error):
             status = .failed(error.localizedDescription)

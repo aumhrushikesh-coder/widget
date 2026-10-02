@@ -32,6 +32,24 @@ git checkout claude/macos-widget-sharepoint-1ly6b3
 The app keeps your sign-in in its own web storage, the same way Safari would, and uses it only to
 download the timetable file. If the sign-in expires, the widget shows a **Sign in** link.
 
+## On your iPhone
+
+Your Mac does the sign-in and download, then saves your classes to iCloud Drive. A free iPhone
+app called **Scriptable** shows them as a home screen or lock screen widget.
+
+1. On your iPhone, install **Scriptable** from the App Store and open it once. Use the same Apple ID
+   as your Mac, with iCloud Drive turned on.
+2. On your Mac, choose 📅 → **Refresh Now** in the MICA Schedule menu. The app copies a script called
+   **MICA Schedule** and your class list into Scriptable's iCloud folder. Give iCloud a minute to sync.
+3. On your iPhone, open Scriptable. You should see **MICA Schedule**; tap it to preview it.
+4. Long-press the home screen, tap **Edit** → **Add Widget**, choose **Scriptable**, then pick a size.
+   Long-press the new widget, tap **Edit Widget**, and set **Script** to **MICA Schedule**.
+   Lock screen widgets work the same way.
+
+The phone shows whatever your Mac last synced. The Mac refreshes every 30 minutes while it's awake
+and the app is running. If the script doesn't appear in Scriptable, copy `iPhone/MICA Schedule.js`
+into a new script yourself.
+
 ## When a new timetable comes out
 
 Open the new timetable in your browser, copy the address from the address bar, then choose
@@ -64,3 +82,5 @@ row-per-session timetables. Click **Open sheet** to check anything against the o
 | `Sources/ScheduleWidget/XLSXReader.swift` | Dependency-free `.xlsx` reader |
 | `Sources/ScheduleWidget/ScheduleExtractor.swift` | Finds your courses and their date and time |
 | `Sources/ScheduleWidget/Settings.swift` | Timetable link, courses, preferences |
+| `Sources/ScheduleWidget/PhoneSync.swift` | Saves your classes and the iPhone script to iCloud Drive |
+| `iPhone/MICA Schedule.js` | Scriptable widget for the iPhone home and lock screen |

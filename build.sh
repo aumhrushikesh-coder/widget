@@ -11,6 +11,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$(swift build -c release --show-bin-path)/ScheduleWidget" "$APP/Contents/MacOS/ScheduleWidget"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp "iPhone/MICA Schedule.js" "$APP/Contents/Resources/MICA Schedule.js"
 codesign --force --sign - "$APP"
 
 if [[ "${1:-}" != "--no-install" ]]; then
