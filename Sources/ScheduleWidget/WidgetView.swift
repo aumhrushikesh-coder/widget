@@ -44,6 +44,7 @@ struct WidgetView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .background(WindowDragArea())
     }
 
     @ViewBuilder
@@ -113,6 +114,7 @@ struct WidgetView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .background(WindowDragArea())
     }
 }
 
@@ -170,6 +172,18 @@ private struct SessionRow: View {
         let index = course.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % palette.count
         return palette[index]
     }
+}
+
+/// Dragging anywhere on this area moves the widget window. SwiftUI content drawn on top
+/// (buttons, the checkbox) still gets its own clicks.
+private struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+    }
+
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ view: NSView, context: Context) {}
 }
 
 private struct VisualEffectBackground: NSViewRepresentable {

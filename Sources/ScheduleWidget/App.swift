@@ -100,10 +100,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let login = item("Open at Login", #selector(toggleLaunchAtLogin))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
-        menu.addItem(item("Reset Widget Position", #selector(resetPosition)))
+        menu.addItem(submenu("Move Widget To", [
+            ("Top Right", #selector(moveTopRight)), ("Top Left", #selector(moveTopLeft)),
+            ("Bottom Right", #selector(moveBottomRight)), ("Bottom Left", #selector(moveBottomLeft)),
+            ("Center", #selector(moveCenter)),
+        ]))
+        menu.addItem(submenu("Widget Size", [
+            ("Small", #selector(sizeSmall)), ("Medium", #selector(sizeMedium)), ("Tall", #selector(sizeTall)),
+        ]))
         menu.addItem(item("Settings…", #selector(showSettings), ","))
         menu.addItem(.separator())
         menu.addItem(item("Quit", #selector(quit), "q"))
+    }
+
+    private func submenu(_ title: String, _ entries: [(String, Selector)]) -> NSMenuItem {
+        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let menu = NSMenu()
+        for (name, action) in entries { menu.addItem(item(name, action)) }
+        parent.submenu = menu
+        return parent
     }
 
     private func item(_ title: String, _ action: Selector, _ key: String = "") -> NSMenuItem {
@@ -139,11 +154,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func resetPosition() {
-        panel.setContentSize(NSSize(width: 330, height: 440))
-        placeTopRight()
+    private enum Corner { case topLeft, topRight, bottomLeft, bottomRight, center }
+
+    private func move(to corner: Corner) {
+        guard let screen = (panel.screen ?? NSScreen.main)?.visibleFrame else { return }
+        let size = panel.frame.size
+        let margin: CGFloat = 24
+        let left = screen.minX + margin, right = screen.maxX - size.width - margin
+        let top = screen.maxY - size.height - margin, bottom = screen.minY + margin
+        let origin: NSPoint
+        switch corner {
+        case .topLeft: origin = NSPoint(x: left, y: top)
+        case .topRight: origin = NSPoint(x: right, y: top)
+        case .bottomLeft: origin = NSPoint(x: left, y: bottom)
+        case .bottomRight: origin = NSPoint(x: right, y: bottom)
+        case .center: origin = NSPoint(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2)
+        }
+        panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
     }
+
+    @objc private func moveTopRight() { move(to: .topRight) }
+    @objc private func moveTopLeft() { move(to: .topLeft) }
+    @objc private func moveBottomRight() { move(to: .bottomRight) }
+    @objc private func moveBottomLeft() { move(to: .bottomLeft) }
+    @objc private func moveCenter() { move(to: .center) }
+
+    /// Resizes while keeping the top edge where it is.
+    private func resize(width: CGFloat, height: CGFloat) {
+        var frame = panel.frame
+        frame.origin.y += frame.height - height
+        frame.size = NSSize(width: width, height: height)
+        panel.setFrame(frame, display: true, animate: true)
+    }
+
+    @objc private func sizeSmall() { resize(width: 300, height: 300) }
+    @objc private func sizeMedium() { resize(width: 330, height: 440) }
+    @objc private func sizeTall() { resize(width: 360, height: 640) }
 
     @objc private func importFile() {
         let open = NSOpenPanel()
