@@ -184,9 +184,15 @@ private struct VisualEffectBackground: NSViewRepresentable {
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
+/// Holds the form's text while editing. (An ObservableObject rather than @State, because @State
+/// is a macro in recent SDKs and its plugin isn't shipped with the Command Line Tools.)
+final class SettingsForm: ObservableObject {
+    @Published var documentURL = Settings.documentURL
+    @Published var courses = Settings.coursesText
+}
+
 struct SettingsView: View {
-    @State private var documentURL = Settings.documentURL
-    @State private var courses = Settings.coursesText
+    @ObservedObject private var form = SettingsForm()
     private let onSave: () -> Void
 
     init(onSave: @escaping () -> Void) {
@@ -195,21 +201,21 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            TextField("Courses", text: $courses, prompt: Text("S5, S8"))
-            TextField("Timetable link", text: $documentURL, axis: .vertical)
+            TextField("Courses", text: $form.courses, prompt: Text("S5, S8"))
+            TextField("Timetable link", text: $form.documentURL, axis: .vertical)
                 .lineLimit(3...6)
             Text("Paste the link of the timetable as it opens in Excel Online. Update it when a new phase timetable is shared.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {
                 Button("Reset to defaults") {
-                    documentURL = Settings.defaultDocumentURL
-                    courses = Settings.defaultCourses
+                    form.documentURL = Settings.defaultDocumentURL
+                    form.courses = Settings.defaultCourses
                 }
                 Spacer()
                 Button("Save") {
-                    Settings.documentURL = documentURL
-                    Settings.coursesText = courses
+                    Settings.documentURL = form.documentURL
+                    Settings.coursesText = form.courses
                     onSave()
                 }
                 .keyboardShortcut(.defaultAction)
