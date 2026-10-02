@@ -46,6 +46,9 @@ app called **Scriptable** shows them as a home screen or lock screen widget.
    Long-press the new widget, tap **Edit Widget**, and set **Script** to **MICA Schedule**.
    Lock screen widgets work the same way.
 
+iPhone widgets can't scroll, so the widget shows the next few classes and a "+N more" line.
+Tap it to open the full, scrollable list in Scriptable.
+
 The phone shows whatever your Mac last synced. The Mac refreshes every 30 minutes while it's awake
 and the app is running. If the script doesn't appear in Scriptable, copy `iPhone/MICA Schedule.js`
 into a new script yourself.

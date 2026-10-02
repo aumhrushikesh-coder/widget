@@ -206,7 +206,8 @@ function buildWidget(data) {
     t.font = Font.systemFont(13)
     return widget
   }
-  if (data.documentURL) widget.url = data.documentURL
+  // Widgets can't scroll, so tapping one opens the full scrollable list in Scriptable.
+  widget.url = `scriptable:///run/${encodeURIComponent(Script.name())}`
 
   const classes = upcoming(data, now)
   if (family.startsWith("accessory")) {
@@ -243,8 +244,9 @@ function buildWidget(data) {
     return widget
   }
 
-  const rows = { medium: 1, large: 6, extraLarge: 8 }[family] || 1
-  const rest = classes.filter(s => s !== h.s && !(s.start != null && at(s.day, s.end) <= now)).slice(0, rows)
+  const rows = { medium: 1, large: 4, extraLarge: 6 }[family] || 1
+  const remaining = classes.filter(s => s !== h.s && !(s.start != null && at(s.day, s.end) <= now))
+  const rest = remaining.slice(0, rows)
   let lastDay = null
   for (const s of rest) {
     widget.addSpacer(6)
@@ -258,14 +260,123 @@ function buildWidget(data) {
     addRow(widget, s, now)
   }
   widget.addSpacer()
+  const hidden = remaining.length - rest.length
+  if (hidden > 0) {
+    const more = widget.addText(`+${hidden} more · tap to see all`)
+    more.font = Font.mediumSystemFont(9)
+    more.textColor = secondary
+    more.centerAlignText()
+  }
   return widget
 }
 
+// Full scrollable list, shown when the widget is tapped or the script is run in the app.
+async function presentList(data) {
+  const now = new Date()
+  const table = new UITable()
+  table.showSeparators = false
+
+  if (!data) {
+    const row = new UITableRow()
+    row.addText("Open MICA Schedule on your Mac to sync your classes.")
+    table.addRow(row)
+    await table.present(false)
+    return
+  }
+
+  const header = new UITableRow()
+  header.isHeader = true
+  header.height = 70
+  const heading = header.addText("My Classes", (data.courses || []).join(" · "))
+  heading.titleFont = Font.boldRoundedSystemFont(26)
+  heading.subtitleFont = Font.mediumSystemFont(12)
+  heading.subtitleColor = secondary
+  table.addRow(header)
+
+  const classes = upcoming(data, now)
+  const live = hero(classes, now)
+  if (live) {
+    const row = new UITableRow()
+    row.height = 92
+    row.backgroundColor = colorOf(live.s)
+    const cell = row.addText(heroBadge(live, now), `${title(live.s)}\n${range(live.s)}${subtitle(live.s) ? " · " + subtitle(live.s) : ""}`)
+    cell.titleFont = Font.heavySystemFont(11)
+    cell.titleColor = Color.white()
+    cell.subtitleFont = Font.boldRoundedSystemFont(15)
+    cell.subtitleColor = Color.white()
+    table.addRow(row)
+  }
+
+  let lastDay = null
+  for (const s of classes) {
+    if (s.day !== lastDay) {
+      const dayRow = new UITableRow()
+      dayRow.height = 40
+      const label = dayRow.addText(dayTitle(s.day, now).toUpperCase())
+      label.titleFont = Font.boldSystemFont(12)
+      label.titleColor = s.day === dayKey(now) ? red : secondary
+      table.addRow(dayRow)
+      lastDay = s.day
+    }
+    const over = s.start != null && at(s.day, s.end) <= now
+    const row = new UITableRow()
+    row.height = 64
+    row.cellSpacing = 10
+
+    const time = row.addText(s.start != null ? clock(s.start) : "—", s.end != null ? clock(s.end) : "")
+    time.widthWeight = 16
+    time.titleFont = Font.semiboldRoundedSystemFont(15)
+    time.subtitleFont = Font.systemFont(11)
+    time.subtitleColor = secondary
+    time.rightAligned()
+
+    const bar = row.addText("┃")
+    bar.widthWeight = 4
+    bar.titleFont = Font.heavySystemFont(26)
+    bar.titleColor = colorOf(s)
+    bar.centerAligned()
+
+    const body = row.addText(title(s), [code(s), subtitle(s)].filter(Boolean).join(" · "))
+    body.widthWeight = 80
+    body.titleFont = Font.semiboldSystemFont(14)
+    body.titleColor = over ? secondary : textColor
+    body.subtitleFont = Font.systemFont(11)
+    body.subtitleColor = secondary
+    table.addRow(row)
+  }
+
+  if (classes.length === 0) {
+    const row = new UITableRow()
+    row.addText("No upcoming classes 🌴")
+    table.addRow(row)
+  }
+
+  if (data.documentURL) {
+    const open = new UITableRow()
+    open.height = 56
+    open.dismissOnSelect = false
+    const link = open.addText("Open full timetable in Excel")
+    link.titleColor = new Color("#3B82F6")
+    link.titleFont = Font.semiboldSystemFont(14)
+    link.centerAligned()
+    open.onSelect = () => Safari.open(data.documentURL)
+    table.addRow(open)
+  }
+
+  const footer = new UITableRow()
+  const synced = footer.addText(`Synced from your Mac ${new RelativeDateTimeFormatter().string(new Date(data.updated), now)}`)
+  synced.titleFont = Font.systemFont(11)
+  synced.titleColor = secondary
+  synced.centerAligned()
+  table.addRow(footer)
+
+  await table.present(false)
+}
+
 const data = await loadData()
-const widget = buildWidget(data)
 if (config.runsInWidget) {
-  Script.setWidget(widget)
+  Script.setWidget(buildWidget(data))
 } else {
-  await widget.presentLarge()
+  await presentList(data)
 }
 Script.complete()
