@@ -15,6 +15,8 @@ struct ClassSession: Identifiable, Hashable {
     var cell: String
     var timeSource: String?
     var dateSource: String?
+    /// Start/end worked out from the order of the timetable's time slots (see `resolveSpan`).
+    var resolvedSpan: (start: Int, end: Int)? = nil
 
     var course: Course? { courses.lazy.compactMap(CourseCatalog.course(for:)).first }
 
@@ -32,7 +34,7 @@ struct ClassSession: Identifiable, Hashable {
 
     /// Start and end, in minutes after midnight, of the first time slot.
     var span: (start: Int, end: Int)? {
-        times.lazy.compactMap(ScheduleExtractor.span(of:)).first
+        resolvedSpan ?? times.lazy.compactMap(ScheduleExtractor.span(of:)).first
     }
 
     /// Minutes after midnight of the first time slot, for sorting.
@@ -81,7 +83,8 @@ enum ScheduleExtractor {
                         sheet: sheet.name,
                         cell: reference(row, column),
                         timeSource: time.map { reference($0.row, $0.column) },
-                        dateSource: day.map { reference($0.row, $0.column) }))
+                        dateSource: day.map { reference($0.row, $0.column) },
+                        resolvedSpan: time.flatMap { resolveSpan(slot: $0, classRow: row, classColumn: column, in: sheet) }))
                 }
             }
         }
@@ -206,20 +209,98 @@ enum ScheduleExtractor {
     }
 
     static func minutes(of time: String) -> Int? {
+        guard let raw = rawTime(time) else { return nil }
+        if raw.meridiem != nil { return raw.absolute(offset: 0) }
+        // "2:00" in a class timetable means the afternoon.
+        return raw.absolute(offset: raw.hour < 8 ? 12 * 60 : 0)
+    }
+
+    /// A clock time as written, before deciding whether it's morning or evening.
+    private struct RawTime {
+        let hour: Int
+        let minute: Int
+        let meridiem: Character?
+
+        /// `offset` is 0 for the morning, 720 once the slots have gone past noon.
+        func absolute(offset: Int) -> Int {
+            if let meridiem {
+                return ((hour % 12) + (meridiem == "p" ? 12 : 0)) * 60 + minute
+            }
+            if hour == 12 { return 12 * 60 + minute } // noon
+            return hour * 60 + minute + offset
+        }
+    }
+
+    private static func rawTime(_ time: String) -> RawTime? {
         let lower = time.lowercased()
         let regex = try! NSRegularExpression(pattern: "(\\d{1,2})(?:[:.](\\d{2}))?\\s*([ap])?")
         guard let match = regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
               let hourRange = Range(match.range(at: 1), in: lower),
-              var hour = Int(lower[hourRange]) else { return nil }
+              let hour = Int(lower[hourRange]) else { return nil }
         let minute = Range(match.range(at: 2), in: lower).flatMap { Int(lower[$0]) } ?? 0
-        if let meridiemRange = Range(match.range(at: 3), in: lower) {
-            let pm = lower[meridiemRange] == "p"
-            if pm && hour < 12 { hour += 12 }
-            if !pm && hour == 12 { hour = 0 }
-        } else if hour < 8 {
-            hour += 12 // "2:00" in a class timetable means the afternoon
+        let meridiem = Range(match.range(at: 3), in: lower).map { lower[$0].first! }
+        return RawTime(hour: hour, minute: minute, meridiem: meridiem)
+    }
+
+    /// Timetables write "9.00-10.15" without am/pm. Reading the run of time-slot headers in order
+    /// settles it: in "…, 5.30-6.45, 7.00-8.15, 9.00-10.15" the last slot comes after 7 pm, so it's 9 pm,
+    /// while a run starting "9.00-10.15, 10.30-11.45, …" begins in the morning.
+    private static func resolveSpan(slot: Located<String>, classRow: Int, classColumn: Int,
+                                    in sheet: Sheet) -> (start: Int, end: Int)? {
+        // Time written inside the class cell itself: no header run to compare against.
+        if slot.row == classRow && slot.column == classColumn { return nil }
+
+        // Time found in the class's row → the times run down a column; otherwise along a header row.
+        let alongRow = slot.row != classRow
+        func position(_ step: Int) -> (row: Int, column: Int) {
+            alongRow ? (slot.row, slot.column + step) : (slot.row + step, slot.column)
         }
-        return hour * 60 + minute
+        func slotText(_ step: Int) -> String? {
+            let at = position(step)
+            guard at.row >= 0, at.column >= 0, let cell = sheet.cell(at.row, at.column) else { return nil }
+            return timeText(in: cell, strict: true)
+        }
+
+        // Read every slot from the start of the row/column, skipping break columns like "Lunch".
+        let first = -(alongRow ? slot.column : slot.row)
+
+        var offset = 0
+        var previousEnd: Int?
+        var previousText: String?
+        var previousSpan: (start: Int, end: Int)?
+        for step in first...0 {
+            guard let text = slotText(step) else { continue }
+            if text == previousText { // merged header cells repeat the same slot
+                if step == 0 { return previousSpan }
+                continue
+            }
+            previousText = text
+            let parts = text.components(separatedBy: CharacterSet(charactersIn: "-–—"))
+                .flatMap { $0.components(separatedBy: " to ") }
+                .filter { $0.rangeOfCharacter(from: .decimalDigits) != nil }
+            guard let startRaw = parts.first.flatMap(rawTime) else { continue }
+            let morningGuess = startRaw.hour < 8 ? 12 * 60 : 0
+
+            if startRaw.meridiem == "p" {
+                offset = 12 * 60
+            } else if let previousEnd {
+                // A slot can't start before the previous one ends. If it seems to, either the
+                // clock went past noon ("11.30-12.45" then "1.30"), or a new day's block began.
+                if startRaw.absolute(offset: offset) < previousEnd {
+                    offset = offset == 0 && startRaw.absolute(offset: 12 * 60) >= previousEnd ? 12 * 60 : morningGuess
+                }
+            } else {
+                offset = morningGuess
+            }
+            let slotStart = startRaw.absolute(offset: offset)
+            var slotEnd = parts.count > 1 ? (rawTime(parts[1])?.absolute(offset: offset) ?? slotStart + 75) : slotStart + 75
+            while slotEnd <= slotStart { slotEnd += 12 * 60 }
+            previousEnd = slotEnd
+            previousSpan = (slotStart, slotEnd)
+
+            if step == 0 { return (slotStart, slotEnd) }
+        }
+        return nil
     }
 
     private static let monthNames: [String: Int] = [
