@@ -1,6 +1,6 @@
 # MICA Schedule widget for macOS
 
-A small desktop widget that shows only **your** classes (S5 and S8 by default) from the MICA
+A small desktop widget that shows only **your** classes (your BFSI & FinTech and Consulting courses by default) from the MICA
 timetable spreadsheet on SharePoint. It sits on the desktop, just above the icons and below your
 windows, and refreshes itself every 30 minutes.
 
@@ -54,7 +54,7 @@ into a new script yourself.
 
 Open the new timetable in your browser, copy the address from the address bar, then choose
 📅 → **Settings…** and paste it into **Timetable link**. You can also change your courses there,
-for example `S5, S8`.
+for example `S5-C1, S5-C3, S5-C4, S8-C1, S8-C2, S8-C3, S8-C4`.
 
 Paste the normal document link, the one with `Doc.aspx?sourcedoc=…` or a `:x:/` sharing link.
 Don't paste a link with `#code=…` in it. That's a one-time sign-in code, not the document address.
@@ -63,10 +63,25 @@ If the automatic download doesn't work, for example because the file owner turne
 download it from Excel Online with **File ▸ Save a copy ▸ Download a copy**. Then choose
 📅 → **Import .xlsx File…**.
 
+## Your courses
+
+| Code | Course | Faculty |
+| --- | --- | --- |
+| S5-C1 · TBFS:MMP | The Business of Financial Services: Markets, Models and Products | Taral Pathak, Hemal Vakil, Puneet Kapoor, Deepak Krishnan |
+| S5-C3 · TFE:PPI | The FinTech Ecosystem: Platforms, Policy and Inclusion | Amit Saraswat |
+| S5-C4 · CMAVRA | Capital Markets Architecture: Valuation, Risk and Analysis (Projects) | Taral Pathak, Deepak Krishnan |
+| S8-C1 · LOS | Language of the Sector | Vivek Ganotra |
+| S8-C2 · BOS | Business of the Sector | Gayathri Parthasarathy |
+| S8-C3 · SLDS | Sectoral Legacy and Disruptive Startups | Sam Evans, Sudipta Ghosh |
+| S8-C4 · PRGOS | Policy, Regulation, and Geopolitics of the Sector | Anil Vaidya |
+
+Only cells for these exact codes are shown, so S5-C2 or another section's classes no longer appear.
+Hover over any class to see the sheet cell it came from and where its time and date were read.
+
 ## How classes are found
 
-Every cell in every visible sheet that mentions one of your courses counts as a class. The match
-is case-insensitive and also catches `S-5` and `S 5`, but not `S50` or `BS5`. The app then reads
+Every cell in every visible sheet that mentions one of your course codes counts as a class. The match
+is case-insensitive and also catches `S5 C1` or `S5–C1`, but not `S5-C10`. The app then reads
 the class's date and time the way a person would. It looks first along the same row, then up the
 same column for header rows, then at the rows above. That covers row-per-day, column-per-day, and
 row-per-session timetables. Click **Open sheet** to check anything against the original.

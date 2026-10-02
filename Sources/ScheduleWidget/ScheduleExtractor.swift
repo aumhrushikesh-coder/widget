@@ -8,13 +8,48 @@ struct ClassSession: Identifiable, Hashable {
     var dayLabel: String?
     var times: [String]
     var text: String
+    /// Course keys found in the cell, e.g. ["S8-C4"].
     var courses: [String]
     var sheet: String
+    /// Where the class, its time and its date were read from (e.g. "D14"), shown on hover.
+    var cell: String
+    var timeSource: String?
+    var dateSource: String?
+
+    var course: Course? { courses.lazy.compactMap(CourseCatalog.course(for:)).first }
+
+    /// The "(7)" at the end of "S5-C1-TBFS:MMP (Taral P) (7)".
+    var sessionNumber: Int? {
+        guard let range = text.range(of: "\\((\\d{1,2})\\)\\s*$", options: .regularExpression) else { return nil }
+        return Int(text[range].filter(\.isNumber))
+    }
+
+    /// The faculty abbreviation in the cell, e.g. "Taral P".
+    var facultyShort: String? {
+        guard let range = text.range(of: "\\(([^()]*[A-Za-z][^()]*)\\)", options: .regularExpression) else { return nil }
+        return String(text[range].dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Start and end, in minutes after midnight, of the first time slot.
+    var span: (start: Int, end: Int)? {
+        times.lazy.compactMap(ScheduleExtractor.span(of:)).first
+    }
 
     /// Minutes after midnight of the first time slot, for sorting.
-    var startMinutes: Int {
-        times.lazy.compactMap(ScheduleExtractor.minutes(of:)).first ?? Int.max
+    var startMinutes: Int { span?.start ?? Int.max }
+
+    func start(on calendar: Calendar = .current) -> Date? {
+        guard let day, let span else { return nil }
+        return calendar.date(byAdding: .minute, value: span.start, to: day)
     }
+
+    func end(on calendar: Calendar = .current) -> Date? {
+        guard let day, let span else { return nil }
+        return calendar.date(byAdding: .minute, value: span.end, to: day)
+    }
+
+    static func == (lhs: ClassSession, rhs: ClassSession) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 /// Finds the cells that mention the chosen courses and works out the date and time slot of each.
@@ -38,12 +73,15 @@ enum ScheduleExtractor {
                     let day = date(forRow: row, column: column, in: sheet)
                     let time = timeSlot(forRow: row, column: column, in: sheet, cell: cell)
                     found.append(ClassSession(
-                        day: day,
-                        dayLabel: day == nil ? weekday(forRow: row, column: column, in: sheet) : nil,
-                        times: time.map { [$0] } ?? [],
+                        day: day?.value,
+                        dayLabel: day == nil ? weekday(forRow: row, column: column, in: sheet)?.value : nil,
+                        times: time.map { [$0.value] } ?? [],
                         text: cell.text.trimmingCharacters(in: .whitespacesAndNewlines),
                         courses: matched,
-                        sheet: sheet.name))
+                        sheet: sheet.name,
+                        cell: reference(row, column),
+                        timeSource: time.map { reference($0.row, $0.column) },
+                        dateSource: day.map { reference($0.row, $0.column) }))
                 }
             }
         }
@@ -52,36 +90,46 @@ enum ScheduleExtractor {
 
     // MARK: Course matching
 
-    /// "S5" matches "S5", "s5", "S-5", "S 5" but not "S50" or "BS5".
+    /// "S5-C1" matches "S5-C1-TBFS", "s5 c1", "S5–C1" but not "S5-C10" or "BS5-C1".
+    /// A single code like "S5" matches "S5", "S-5", "S 5" but not "S50".
     private static func matcher(for code: String) -> NSRegularExpression? {
-        let trimmed = code.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return nil }
-        let pattern: String
-        if let split = trimmed.range(of: "^[A-Za-z]+(?=\\d+$)", options: .regularExpression) {
-            let letters = NSRegularExpression.escapedPattern(for: String(trimmed[split]))
-            let digits = String(trimmed[split.upperBound...])
-            pattern = "(?<![A-Za-z0-9])\(letters)\\s*[-–.]?\\s*\(digits)(?![0-9])"
-        } else {
-            pattern = "(?<![A-Za-z0-9])\(NSRegularExpression.escapedPattern(for: trimmed))(?![A-Za-z0-9])"
+        // Split "S5-C1" into letter and digit runs: S, 5, C, 1.
+        let upper = code.uppercased()
+        let runs = try! NSRegularExpression(pattern: "[A-Z]+|[0-9]+")
+        let pieces = runs.matches(in: upper, range: NSRange(upper.startIndex..., in: upper))
+            .compactMap { Range($0.range, in: upper).map { String(upper[$0]) } }
+        guard !pieces.isEmpty else { return nil }
+        let body = pieces.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "\\s*[-–_.:/]?\\s*")
+        let tail = pieces.last!.first!.isNumber ? "(?![0-9])" : "(?![A-Za-z0-9])"
+        return try? NSRegularExpression(pattern: "(?<![A-Za-z0-9])\(body)\(tail)", options: [.caseInsensitive])
+    }
+
+    private static func reference(_ row: Int, _ column: Int) -> String {
+        var letters = ""
+        var index = column + 1
+        while index > 0 {
+            let remainder = (index - 1) % 26
+            letters = String(UnicodeScalar(65 + remainder)!) + letters
+            index = (index - 1) / 26
         }
-        return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        return "\(letters)\(row + 1)"
     }
 
     // MARK: Locating date and time
 
-    private static func date(forRow row: Int, column: Int, in sheet: Sheet) -> Date? {
+    private static func date(forRow row: Int, column: Int, in sheet: Sheet) -> Located<Date>? {
         locate(row: row, column: column, in: sheet, searchAllRowsAbove: true) { cell in
             if let date = cell.date { return Calendar.current.startOfDay(for: date) }
             return parseTextDate(cell.text)
         }
     }
 
-    private static func timeSlot(forRow row: Int, column: Int, in sheet: Sheet, cell: SheetCell) -> String? {
-        if let own = timeText(in: cell, strict: false) { return own }
+    private static func timeSlot(forRow row: Int, column: Int, in sheet: Sheet, cell: SheetCell) -> Located<String>? {
+        if let own = timeText(in: cell, strict: false) { return Located(value: own, row: row, column: column) }
         return locate(row: row, column: column, in: sheet, searchAllRowsAbove: false) { timeText(in: $0, strict: true) }
     }
 
-    private static func weekday(forRow row: Int, column: Int, in sheet: Sheet) -> String? {
+    private static func weekday(forRow row: Int, column: Int, in sheet: Sheet) -> Located<String>? {
         let names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         return locate(row: row, column: column, in: sheet, searchAllRowsAbove: true) { cell in
             let text = cell.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -90,20 +138,26 @@ enum ScheduleExtractor {
         }
     }
 
+    private struct Located<T> {
+        let value: T
+        let row: Int
+        let column: Int
+    }
+
     private static func locate<T>(row: Int, column: Int, in sheet: Sheet, searchAllRowsAbove: Bool,
-                                  probe: (SheetCell) -> T?) -> T? {
+                                  probe: (SheetCell) -> T?) -> Located<T>? {
         // 1. Same row, nearest column first (left before right).
         if let columns = sheet.rows[row] {
             let others = columns.keys.filter { $0 != column }
                 .sorted { (abs($0 - column), $0) < (abs($1 - column), $1) }
             for other in others {
-                if let cell = columns[other], let value = probe(cell) { return value }
+                if let cell = columns[other], let value = probe(cell) { return Located(value: value, row: row, column: other) }
             }
         }
         // 2. Same column, walking up.
         var above = row - 1
         while above >= 0 {
-            if let cell = sheet.cell(above, column), let value = probe(cell) { return value }
+            if let cell = sheet.cell(above, column), let value = probe(cell) { return Located(value: value, row: above, column: column) }
             above -= 1
         }
         // 3. Any cell in the rows above, nearest row first.
@@ -112,7 +166,7 @@ enum ScheduleExtractor {
         while above >= 0 {
             if let columns = sheet.rows[above] {
                 for other in columns.keys.sorted() {
-                    if let cell = columns[other], let value = probe(cell) { return value }
+                    if let cell = columns[other], let value = probe(cell) { return Located(value: value, row: above, column: other) }
                 }
             }
             above -= 1
@@ -138,6 +192,17 @@ enum ScheduleExtractor {
         let slot = String(text[range]).trimmingCharacters(in: .whitespaces)
         if strict && Double(slot.count) < Double(text.count) * 0.6 { return nil }
         return slot
+    }
+
+    /// "3.45- 5.00" → 15:45–17:00. A slot without an end is taken as 75 minutes long.
+    static func span(of time: String) -> (start: Int, end: Int)? {
+        let parts = time.components(separatedBy: CharacterSet(charactersIn: "-–—"))
+            .flatMap { $0.components(separatedBy: " to ") }
+            .filter { $0.rangeOfCharacter(from: .decimalDigits) != nil }
+        guard let first = parts.first, let start = minutes(of: first) else { return nil }
+        guard parts.count > 1, var end = minutes(of: parts[1]) else { return (start, start + 75) }
+        while end <= start { end += 12 * 60 }
+        return (start, end)
     }
 
     static func minutes(of time: String) -> Int? {

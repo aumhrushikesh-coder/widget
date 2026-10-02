@@ -30,6 +30,14 @@ enum PhoneSync {
             let times: [String]
             let text: String
             let courses: [String]
+            let name: String?
+            let code: String?
+            let faculty: String?
+            let session: Int?
+            /// Minutes after midnight.
+            let start: Int?
+            let end: Int?
+            let color: Int?
         }
         let updated: String
         let documentURL: String
@@ -49,7 +57,10 @@ enum PhoneSync {
             courses: courses,
             sessions: sessions.map {
                 Payload.Item(day: $0.day.map(dayFormatter.string(from:)), dayLabel: $0.dayLabel,
-                             times: $0.times, text: $0.text, courses: $0.courses)
+                             times: $0.times, text: $0.text, courses: $0.courses,
+                             name: $0.course?.name, code: $0.course?.code,
+                             faculty: $0.facultyShort ?? $0.course?.faculty, session: $0.sessionNumber,
+                             start: $0.span?.start, end: $0.span?.end, color: $0.course?.colorIndex)
             })
 
         do {

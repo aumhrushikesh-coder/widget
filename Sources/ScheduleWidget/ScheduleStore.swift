@@ -129,6 +129,28 @@ final class ScheduleStore: ObservableObject {
         return data
     }
 
+    // MARK: - Now and next
+
+    /// The class happening right now, if any.
+    func current(at now: Date) -> ClassSession? {
+        sessions.first { session in
+            guard let start = session.start(), let end = session.end() else { return false }
+            return start <= now && now < end
+        }
+    }
+
+    /// The next class that hasn't started yet.
+    func next(after now: Date) -> ClassSession? {
+        sessions
+            .compactMap { session in session.start().map { (session, $0) } }
+            .filter { $0.1 > now }
+            .min { $0.1 < $1.1 }?.0
+    }
+
+    func classesToday(at now: Date) -> [ClassSession] {
+        sessions.filter { $0.day.map { Calendar.current.isDate($0, inSameDayAs: now) } ?? false }
+    }
+
     // MARK: - Grouping for display
 
     struct Day: Identifiable {

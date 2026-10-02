@@ -9,7 +9,7 @@ enum Settings {
         + "?sourcedoc=%7B378B0A86-79DC-4761-A2B8-C90B641C1355%7D"
         + "&file=Schedule_Term-3_phase-2_September-28-1.xlsx&action=default&mobileredirect=true"
 
-    static let defaultCourses = "S5, S8"
+    static let defaultCourses = CourseCatalog.defaultKeys.joined(separator: ", ")
 
     private static let defaults = UserDefaults.standard
 
@@ -19,15 +19,21 @@ enum Settings {
     }
 
     static var coursesText: String {
-        get { defaults.string(forKey: "courses") ?? defaultCourses }
+        get {
+            // "S5, S8" was the first version's default; it matched sections the user doesn't take.
+            guard let saved = defaults.string(forKey: "courses"), saved != "S5, S8" else { return defaultCourses }
+            return saved
+        }
         set { defaults.set(newValue, forKey: "courses") }
     }
 
+    /// Course keys to show, e.g. ["S5-C1", "S8-C4"].
     static var courses: [String] {
-        coursesText
-            .split(whereSeparator: { $0 == "," || $0 == ";" || $0 == " " })
-            .map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
-            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        return coursesText
+            .split(whereSeparator: { $0 == "," || $0 == ";" || $0 == "\n" })
+            .map { CourseCatalog.key(for: String($0)) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     /// true = widget floats above all windows, false = sits on the desktop behind windows.
