@@ -17,7 +17,7 @@ struct WidgetView: View {
         .frame(minWidth: 280, idealWidth: 330, minHeight: 240, idealHeight: 440)
         .background(VisualEffectBackground())
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.15)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.15)))
     }
 
     private var header: some View {
@@ -162,7 +162,7 @@ private struct SessionRow: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .background(.primary.opacity(highlighted ? 0.09 : 0.05), in: RoundedRectangle(cornerRadius: 9))
+        .background(Color.primary.opacity(highlighted ? 0.09 : 0.05), in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func color(for course: String) -> Color {
@@ -187,7 +187,11 @@ private struct VisualEffectBackground: NSViewRepresentable {
 struct SettingsView: View {
     @State private var documentURL = Settings.documentURL
     @State private var courses = Settings.coursesText
-    var onSave: () -> Void
+    private let onSave: () -> Void
+
+    init(onSave: @escaping () -> Void) {
+        self.onSave = onSave
+    }
 
     var body: some View {
         Form {

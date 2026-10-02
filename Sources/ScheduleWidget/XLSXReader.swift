@@ -146,7 +146,7 @@ private final class StylesParser: NSObject, XMLParserDelegate {
         let parser = XMLParser(data: data)
         parser.delegate = delegate
         parser.parse()
-        return Result(cellKinds: delegate.cellFormatIDs.map(delegate.kind))
+        return Result(cellKinds: delegate.cellFormatIDs.map { delegate.kind(forFormatID: $0) })
     }
 
     func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,

@@ -87,7 +87,12 @@ final class ScheduleStore: ObservableObject {
     private func load(from file: URL, updated: Date?) async {
         let courses = Settings.courses
         let result = await Task.detached(priority: .userInitiated) { () -> Result<[ClassSession], Error> in
-            Result { ScheduleExtractor.sessions(in: try XLSXReader.read(file), courses: courses) }
+            do {
+                let sheets = try XLSXReader.read(file)
+                return .success(ScheduleExtractor.sessions(in: sheets, courses: courses))
+            } catch {
+                return .failure(error)
+            }
         }.value
         switch result {
         case .success(let found):
